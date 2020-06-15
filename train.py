@@ -20,6 +20,7 @@ except:
     mixed_precision = False  # not installed
 
 wdir = 'weights' + os.sep  # weights dir
+os.makedirs(wdir, exist_ok=True)
 last = wdir + 'last.pt'
 best = wdir + 'best.pt'
 results_file = 'results.txt'
@@ -80,9 +81,7 @@ def train(hyp):
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
-    if any(x % gs != 0 for x in opt.img_size):
-        print('WARNING: --img-size %g,%g must be multiple of %s max stride %g' % (*opt.img_size, opt.cfg, gs))
-    imgsz, imgsz_test = [make_divisible(x, gs) for x in opt.img_size]  # image sizes (train, test)
+    imgsz, imgsz_test = [check_img_size(x, gs) for x in opt.img_size]  # verify imgsz are gs-multiples
 
     # Optimizer
     nbs = 64  # nominal batch size
@@ -192,13 +191,16 @@ def train(hyp):
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
     model.names = data_dict['names']
 
-    # class frequency
+    # Class frequency
     labels = np.concatenate(dataset.labels, 0)
     c = torch.tensor(labels[:, 0])  # classes
     # cf = torch.bincount(c.long(), minlength=nc) + 1.
     # model._initialize_biases(cf.to(device))
     plot_labels(labels)
     tb_writer.add_histogram('classes', c, 0)
+
+    # Check anchors
+    check_best_possible_recall(dataset, anchors=model.model[-1].anchor_grid, thr=hyp['anchor_t'])
 
     # Exponential moving average
     ema = torch_utils.ModelEMA(model)
